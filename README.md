@@ -92,3 +92,4 @@ ReceiptScanner/
 ## License
 
 MIT
+# receiptscanner-xcode
