@@ -1,6 +1,7 @@
 // Navigation type definitions
 export type RootStackParamList = {
     Home: undefined;
+    Login: undefined;
     Camera: undefined;
     History: undefined;
     ReceiptDetail: { receiptId: number };
