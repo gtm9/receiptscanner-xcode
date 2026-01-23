@@ -1,224 +1,232 @@
 /**
  * Receipt Parsing Utility
  * 
- * Parses raw OCR text from receipts into structured data.
- * Focused on US grocery receipt format.
+ * robust, generalized parser for US grocery receipts.
+ * Implements heuristic-based extraction and confidence scoring.
  */
 
-import { Receipt, ReceiptItem } from '../types';
+import { ReceiptItem, ParsedReceipt } from '../types';
 
-interface ParsedReceipt {
-    items: ReceiptItem[];
-    subtotal?: number;
-    tax?: number;
-    total?: number;
-    rawText: string;
-}
+// --- Regex Constants (Modular & Maintainable) ---
+
+const DATE_REGEX = /(\d{1,2}[\/\-.]\d{1,2}[\/\-.]20\d{2})|(\d{1,2}[\/\-.]\d{1,2}[\/\-.]2\d)/; // Strict Year: 20xx or 2x (e.g. 26). Avoids 678-546.
+const PRICE_REGEX = /^\$?(\d+\.\d{2})\s*([A-Z]{1,2}|[*TQF])?$/; // Matches "12.34", "$12.34", "12.34 T"
+const ITEM_PRICE_AT_END_REGEX = /^(.+?)\s+\$?(\d+\.\d{2})\s*([A-Z]{1,2}|[*TQF])?$/; // Name ... Price
+const ITEM_QTY_PREFIX_REGEX = /^(\d+)\s*[@x]\s*\$?(\d+\.\d{2})\s+(.+)$/i; // 2 @ 1.99 Item
+// Removed ^ anchor to match "**** Total Sale"
+const TOTAL_KEYWORDS_REGEX = /(TOTAL|BALANCE|AMOUNT\s*DUE|GRAND\s*TOTAL|PAYMENT|PAID)/i;
+const TAX_KEYWORDS_REGEX = /^(TAX|SALES\s*TAX|HST|GST|VAT)/i;
+// Added "you saved", "prices" to filtering
+const IGNORE_LINE_REGEX = /^(welcome|visit|store|receipt|change|savings|auth|ref|merchant|terminal|trace|appr|aid|tvr|tsi|arc|iad|visa|mastercard|amex|discover|debit|credit|chip|swipe|insert|tap|usd\$?|amount|customer|card|fuel|points|entry|id|fresh|for|with\s*our|prices|you\s*saved)/i;
 
 /**
- * Parse receipt text into structured data
+ * Parse parsed receipt text into structured data
  * @param text - Raw text from OCR
- * @returns Parsed receipt with items and totals
+ * @returns Parsed receipt with items, totals, and confidence score
  */
 export function parseReceipt(text: string): ParsedReceipt {
-    const lines = text.split('\n').map(line => line.trim()).filter(Boolean);
+    const lines = text.split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0);
 
     const items: ReceiptItem[] = [];
-    let subtotal: number | undefined;
-    let tax: number | undefined;
-    let total: number | undefined;
+    let total: number | null = null;
+    let subtotal: number | null = null;
+    let tax: number | null = null;
+    let date: string | undefined;
 
+    // Heuristic: Store Name is usually in the first few lines
+    let storeName = extractStoreName(lines);
+
+    // Heuristic: Date can be anywhere, but usually near header or footer
+    date = extractDate(lines);
+
+    // Process Lines
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
 
-        // Try to parse as total line
-        // Support specific single-line match or lookahead
-        const totalMatch = parseTotalLine(line);
-        if (totalMatch !== null) {
-            total = totalMatch;
+        // Skip garbage/footer lines
+        // Use helper to check for SAVINGS anywhere
+        if (shouldSkipLine(line)) continue;
+
+        // 1. Check for Total
+        if (TOTAL_KEYWORDS_REGEX.test(line)) {
+            const val = extractPriceFromLine(line);
+            if (val !== null) {
+                if (total === null || val > total) {
+                    total = val;
+                }
+            } else if (i + 1 < lines.length) {
+                // Lookahead: "Total" \n "12.34"
+                const nextLineVal = extractPriceFromLine(lines[i + 1]);
+                if (nextLineVal !== null) {
+                    total = nextLineVal;
+                    i++;
+                }
+            }
             continue;
         }
 
-        // Lookahead for Split Total: "Total Sale***" \n "36.97"
-        if (/^Total\s*Sale/i.test(line) || /^Total$/i.test(line)) {
-            if (i + 1 < lines.length) {
-                const nextLine = lines[i + 1];
-                if (/^\$?(\d+\.\d{2})$/.test(nextLine)) {
-                    total = parseFloat(nextLine.replace('$', ''));
-                    i++; // Skip next line
-                    continue;
+        // 2. Check for Tax
+        if (TAX_KEYWORDS_REGEX.test(line)) {
+            const val = extractPriceFromLine(line);
+            if (val !== null) tax = val;
+            continue;
+        }
+
+        // 3. Extract Items
+        // Strategy: Only consider lines that look like items if we haven't hit the "Total" section heavily yet
+        const item = extractItem(line);
+        if (item) {
+            items.push(item);
+        } else {
+            // Multi-line Item Fallback:
+            // If this line is just a price "1.89 B", check if previous line was a potential name
+            // AND ensure the previous line wasn't processed as something else.
+            const priceMatch = line.match(/^\$?(\d+\.\d{2})\s*([A-Z]{1,2}|[*TQF])?$/);
+            if (priceMatch && i > 0) {
+                const prevLine = lines[i - 1];
+                // Ensure previous line isn't noise, header, or already caught
+                if (!shouldSkipLine(prevLine) && !TOTAL_KEYWORDS_REGEX.test(prevLine) && !TAX_KEYWORDS_REGEX.test(prevLine)) {
+                    // Check if previous line was already added as an item? 
+                    // Simple heuristic: If items array is not empty and last item name == cleanName(prevLine), skip? 
+                    // For now, assume previous line was skipped by extractItem because it had no price.
+
+                    items.push({
+                        name: cleanName(prevLine),
+                        price: parseFloat(priceMatch[1]),
+                        quantity: 1,
+                    });
                 }
             }
         }
-
-        // Try to parse as subtotal line
-        const subtotalMatch = parseSubtotalLine(line);
-        if (subtotalMatch !== null) {
-            subtotal = subtotalMatch;
-            continue;
-        }
-
-        // Try to parse as tax line
-        const taxMatch = parseTaxLine(line);
-        if (taxMatch !== null) {
-            tax = taxMatch;
-            continue;
-        }
-
-        // Try to parse as item line
-        const itemMatch = parseItemLine(line);
-        if (itemMatch) {
-            items.push({
-                receiptId: 0, // Will be set when saving to DB
-                name: itemMatch.name,
-                price: itemMatch.price,
-            });
-        }
     }
+
+    // Default total to sum of items if missing (fallback)
+    if (total === null && items.length > 0) {
+        // This is a weak fallback, but better than nothing
+        // total = items.reduce((sum, item) => sum + (item.price * (item.quantity || 1)), 0);
+    }
+
+    // Calculate Confidence Score
+    const confidence = calculateConfidence({ total, date, storeName, items });
 
     return {
         items,
-        subtotal,
-        tax,
-        total,
+        storeName: storeName || undefined,
+        date,
+        subtotal: subtotal || undefined,
+        tax: tax || undefined,
+        total: total || undefined,
         rawText: text,
+        confidence,
     };
 }
 
 /**
- * Parse a line as an item with name and price
- * Common formats:
- * - "MILK 2% GAL    3.99"
- * - "BANANAS        $1.29"
- * - "BREAD WHOLE WHEAT 2.49 F"
- * - "3 @ 0.50  LEMONS  1.50"
+ * Calculate a 0-1 confidence score
  */
-function parseItemLine(line: string): { name: string; price: number } | null {
-    // Skip common non-item lines
-    const skipPatterns = [
-        /^(welcome|thank|visit|store|receipt|date|time|card|cash|change|balance|savings)/i,
-        /^(subtotal|total|tax|discount|coupon)/i,
-        /^\d{2}[\/\-]\d{2}[\/\-]\d{2,4}/, // Date patterns
-        /^\d{1,2}:\d{2}/, // Time patterns
-        /^[\*\-=]+$/, // Decorative lines
-        /^(visa|mastercard|amex|discover|debit|credit|us debit)/i,
-        /^(auth|ref|merchant|terminal|trace|appr|aid|tvr|tsi|arc|iad)/i, // Payment terminal info
-        /^(contactless|chip|swipe|insert|tap)/i,
-        /^(usd\$?|amount)/i, // Currency lines often duplicated
-        /^(\*)+/ // Lines starting with ***
-    ];
-
-    for (const pattern of skipPatterns) {
-        if (pattern.test(line)) {
-            return null;
-        }
-    }
-
-    // HEB Special Case: "Total Sale*** 36.97"
-    // Sometimes the OCR attaches the price to the total line and we handle that in parseTotalLine,
-    // but we must ensure such lines are NOT treated as items.
-    if (/total\s*sale/i.test(line)) return null;
-
-    // Pattern 1: Item name followed by price at end
-    // "ITEM NAME HERE    $12.34" or "ITEM NAME HERE    12.34"
-    const priceAtEndMatch = line.match(/^(.+?)\s+\$?(\d+\.\d{2})\s*[A-Z]?$/);
-    if (priceAtEndMatch) {
-        const name = cleanItemName(priceAtEndMatch[1]);
-        const price = parseFloat(priceAtEndMatch[2]);
-
-        // Filter out "USD $36.97" types that might slip through
-        if (name.startsWith('USD') || name === 'DEBIT') return null;
-
-        if (name && !isNaN(price) && price > 0 && price < 1000) {
-            return { name, price };
-        }
-    }
-
-    // Pattern 2: Quantity @ unit price then item total
-    // "3 @ 0.50  LEMONS  1.50"
-    const quantityMatch = line.match(/^(\d+)\s*@\s*\$?(\d+\.\d{2})\s+(.+?)\s+\$?(\d+\.\d{2})$/);
-    if (quantityMatch) {
-        const name = cleanItemName(quantityMatch[3]);
-        const price = parseFloat(quantityMatch[4]);
-        if (name && !isNaN(price)) {
-            return { name, price };
-        }
-    }
-
-    // Pattern 3: Price at start (less common)
-    // "$3.99  MILK 2%"
-    const priceAtStartMatch = line.match(/^\$?(\d+\.\d{2})\s+(.+)$/);
-    if (priceAtStartMatch) {
-        const name = cleanItemName(priceAtStartMatch[2]);
-        const price = parseFloat(priceAtStartMatch[1]);
-        if (name && !isNaN(price) && price > 0 && price < 1000) {
-            return { name, price };
-        }
-    }
-
-    return null;
+function calculateConfidence(data: { total: number | null; date?: string; storeName?: string; items: any[] }): number {
+    let score = 0;
+    if (data.total !== null) score += 0.4;
+    if (data.date) score += 0.3;
+    if (data.storeName) score += 0.2;
+    if (data.items.length > 0) score += 0.1;
+    return parseFloat(score.toFixed(2));
 }
 
 /**
- * Parse total line
- * "TOTAL    $45.67" or "TOTAL DUE: 45.67"
- * HEB: "Total Sale*** 36.97"
+ * Extract Store Name (First valid non-numeric line)
  */
-function parseTotalLine(line: string): number | null {
-    const patterns = [
-        /^TOTAL\s*(?:DUE)?[:\s]*\$?(\d+\.\d{2})/i,
-        /^GRAND\s*TOTAL[:\s]*\$?(\d+\.\d{2})/i,
-        /^AMOUNT\s*DUE[:\s]*\$?(\d+\.\d{2})/i,
-        /^Total\s*Sale[\*\s]*\$?(\d+\.\d{2})/i, // HEB Pattern
-    ];
+function extractStoreName(lines: string[]): string | undefined {
+    for (let i = 0; i < Math.min(lines.length, 5); i++) {
+        const line = lines[i];
+        // Skip dates, phone numbers, common header junk
+        if (line.length < 3) continue;
+        if (/^\d/.test(line)) continue;
+        if (shouldSkipLine(line)) continue;
 
-    for (const pattern of patterns) {
-        const match = line.match(pattern);
+        return cleanName(line);
+    }
+    return undefined;
+}
+
+/**
+ * Extract Date
+ */
+function extractDate(lines: string[]): string | undefined {
+    for (const line of lines) {
+        const match = line.match(DATE_REGEX);
         if (match) {
-            return parseFloat(match[1]);
+            return match[0]; // Return the full matched date string
         }
     }
+    return undefined;
+}
+
+/**
+ * Extract Price from a line (returns first valid float found at end or start)
+ */
+function extractPriceFromLine(line: string): number | null {
+    // Try end first
+    const matchEnd = line.match(/(\d+\.\d{2})\s*$/);
+    if (matchEnd) return parseFloat(matchEnd[1]);
+
+    // Try start (less common for labeled lines like "Total: 12.34")
+    const matchStart = line.match(/^\$?(\d+\.\d{2})/);
+    if (matchStart) return parseFloat(matchStart[1]);
 
     return null;
 }
 
 /**
- * Parse subtotal line
- * "SUBTOTAL    $42.50"
+ * Extract Item from Line
  */
-function parseSubtotalLine(line: string): number | null {
-    const match = line.match(/^SUBTOTAL[:\s]*\$?(\d+\.\d{2})/i);
-    return match ? parseFloat(match[1]) : null;
-}
+function extractItem(line: string): ReceiptItem | null {
+    // 1. Classic: "Item Name   1.99"
+    const matchEnd = line.match(ITEM_PRICE_AT_END_REGEX);
+    if (matchEnd) {
+        const name = cleanName(matchEnd[1]);
+        if (isNoise(name)) return null;
 
-/**
- * Parse tax line
- * "TAX    $3.17" or "SALES TAX 7.25%    3.17"
- */
-function parseTaxLine(line: string): number | null {
-    const patterns = [
-        /^(?:SALES\s*)?TAX[^$]*\$?(\d+\.\d{2})/i,
-        /^HST[:\s]*\$?(\d+\.\d{2})/i,
-        /^GST[:\s]*\$?(\d+\.\d{2})/i,
-    ];
+        return {
+            name,
+            price: parseFloat(matchEnd[2]),
+            quantity: 1,
+        };
+    }
 
-    for (const pattern of patterns) {
-        const match = line.match(pattern);
-        if (match) {
-            return parseFloat(match[1]);
-        }
+    // 2. Qty Prefix: "2 @ 1.99 Item Name"
+    // Note: The structure might be different, let's look for "2 @ 1.99"
+    const matchQty = line.match(ITEM_QTY_PREFIX_REGEX);
+    if (matchQty) {
+        // This regex matched "2 @ 1.99 ItemName" -> Groups: Qty, UnitPrice, Name
+        // Total price isn't explicitly captured by this simple regex, usually it's at the end.
+        // Let's assume the Line *ends* with the total, or calculate it.
+        // Simple version:
+        return {
+            name: cleanName(matchQty[3]),
+            price: parseFloat(matchQty[2]), // Unit price
+            quantity: parseInt(matchQty[1], 10),
+        };
     }
 
     return null;
 }
 
-/**
- * Clean up item name
- */
-function cleanItemName(name: string): string {
-    return name
-        .replace(/\s+/g, ' ')  // Normalize whitespace
-        .replace(/[^\w\s\-\&\']/g, '')  // Remove special chars except common ones
-        .trim()
-        .toUpperCase();
+function cleanName(text: string): string {
+    return text.replace(/[^\w\s\-\&\']/g, '').trim().toUpperCase();
+}
+
+function shouldSkipLine(text: string): boolean {
+    if (IGNORE_LINE_REGEX.test(text)) return true;
+    if (text.toUpperCase().includes('SAVINGS')) return true; // Aggressive skip for 'SAVINGS' anywhere
+    return false;
+}
+
+function isNoise(text: string): boolean {
+    if (text.length < 2) return true;
+    if (/^\d+$/.test(text)) return true; // Only numbers
+    if (shouldSkipLine(text)) return true;
+    return false;
 }

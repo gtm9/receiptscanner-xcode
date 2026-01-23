@@ -16,6 +16,7 @@ import {
 } from 'react-native-vision-camera';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useAuth } from '@clerk/clerk-expo';
 import { RootStackParamList } from '../types';
 import { performOCR } from '../utils/ocr';
 import { parseReceipt } from '../utils/parseReceipt';
@@ -28,6 +29,7 @@ export const CameraScreen: React.FC = () => {
     const camera = useRef<Camera>(null);
     const device = useCameraDevice('back');
     const { hasPermission, requestPermission } = useCameraPermission();
+    const { userId } = useAuth();
 
     const [isProcessing, setIsProcessing] = useState(false);
     const [capturedPhoto, setCapturedPhoto] = useState<PhotoFile | null>(null);
@@ -46,8 +48,8 @@ export const CameraScreen: React.FC = () => {
 
             // Capture photo
             const photo = await camera.current.takePhoto({
-                qualityPrioritization: 'quality',
                 flash: 'off',
+                enableShutterSound: false,
             });
 
             setCapturedPhoto(photo);
@@ -62,11 +64,23 @@ export const CameraScreen: React.FC = () => {
                 const parsedReceipt = parseReceipt(ocrResult.text);
                 console.log('Parsed Receipt:', parsedReceipt);
 
+                // Check confidence
+                if (parsedReceipt.confidence < 0.6) {
+                    console.log('Low confidence parsing:', parsedReceipt.confidence);
+                    // In the future, this is where we would trigger AI Fallback
+                    Alert.alert(
+                        'Review Needed',
+                        'We had trouble reading some details. Please verify the total and date.',
+                    );
+                }
+
                 // Show confirmation dialog
                 Alert.alert(
                     'Receipt Scanned!',
-                    `Found ${parsedReceipt.items.length} items\n` +
-                    `Total: $${parsedReceipt.total?.toFixed(2) || 'N/A'}`,
+                    `Store: ${parsedReceipt.storeName || 'Unknown'}\n` +
+                    `Date: ${parsedReceipt.date || 'Unknown'}\n` +
+                    `Total: $${parsedReceipt.total?.toFixed(2) || 'N/A'}\n` +
+                    `Confidence: ${(parsedReceipt.confidence * 100).toFixed(0)}%`,
                     [
                         {
                             text: 'Discard',
@@ -76,6 +90,12 @@ export const CameraScreen: React.FC = () => {
                         {
                             text: 'Save Receipt',
                             onPress: async () => {
+                                if (!userId) {
+                                    Alert.alert('Error', 'You must be logged in to save receipts.');
+                                    setCapturedPhoto(null);
+                                    return;
+                                }
+
                                 try {
                                     // Save to Neon database
                                     const savedReceipt = await saveReceipt({
@@ -85,7 +105,8 @@ export const CameraScreen: React.FC = () => {
                                         total: parsedReceipt.total,
                                         rawText: parsedReceipt.rawText,
                                         items: parsedReceipt.items,
-                                    });
+                                        confidence: parsedReceipt.confidence,
+                                    }, userId);
 
                                     Alert.alert(
                                         'Saved!',
@@ -115,7 +136,7 @@ export const CameraScreen: React.FC = () => {
         } finally {
             setIsProcessing(false);
         }
-    }, [navigation]);
+    }, [navigation, userId]);
 
     // Permission loading state
     if (!hasPermission) {

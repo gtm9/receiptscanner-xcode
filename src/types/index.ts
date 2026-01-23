@@ -5,6 +5,8 @@ export type RootStackParamList = {
     Camera: undefined;
     History: undefined;
     ReceiptDetail: { receiptId: number };
+    Account: undefined;
+    Stats: undefined;
 };
 
 // Receipt data types
@@ -35,6 +37,8 @@ export interface ParsedReceipt {
     tax?: number;
     total?: number;
     rawText: string;
+    date?: string;
+    confidence: number; // 0-1 score indicating parsing quality
 }
 
 // OCR result types

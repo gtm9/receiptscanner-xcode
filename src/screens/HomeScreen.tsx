@@ -4,10 +4,10 @@ import {
     Text,
     StyleSheet,
     TouchableOpacity,
-    SafeAreaView,
     Alert,
     ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
@@ -18,8 +18,11 @@ import { saveReceipt } from '../utils/db';
 
 type HomeScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Home'>;
 
+import { useAuth } from '@clerk/clerk-expo';
+
 export const HomeScreen: React.FC = () => {
     const navigation = useNavigation<HomeScreenNavigationProp>();
+    const { userId } = useAuth();
     const [isProcessing, setIsProcessing] = useState(false);
 
     const handleScanReceipt = () => {
@@ -88,6 +91,10 @@ export const HomeScreen: React.FC = () => {
                                         {
                                             text: 'Save Anyway',
                                             onPress: async () => {
+                                                if (!userId) {
+                                                    Alert.alert('Error', 'You must be logged in to save receipts.');
+                                                    return;
+                                                }
                                                 // Duplicate save logic here
                                                 try {
                                                     const savedReceipt = await saveReceipt({
@@ -97,7 +104,8 @@ export const HomeScreen: React.FC = () => {
                                                         total: parsedReceipt.total,
                                                         rawText: parsedReceipt.rawText,
                                                         items: parsedReceipt.items,
-                                                    });
+                                                        confidence: parsedReceipt.confidence,
+                                                    }, userId);
 
                                                     Alert.alert(
                                                         'Saved!',
@@ -116,6 +124,10 @@ export const HomeScreen: React.FC = () => {
                             {
                                 text: 'Save Receipt',
                                 onPress: async () => {
+                                    if (!userId) {
+                                        Alert.alert('Error', 'You must be logged in to save receipts.');
+                                        return;
+                                    }
                                     try {
                                         const savedReceipt = await saveReceipt({
                                             storeName: parsedReceipt.storeName,
@@ -124,7 +136,8 @@ export const HomeScreen: React.FC = () => {
                                             total: parsedReceipt.total,
                                             rawText: parsedReceipt.rawText,
                                             items: parsedReceipt.items,
-                                        });
+                                            confidence: parsedReceipt.confidence,
+                                        }, userId);
 
                                         Alert.alert(
                                             'Saved!',
@@ -159,7 +172,7 @@ export const HomeScreen: React.FC = () => {
     };
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView edges={['bottom', 'left', 'right']} style={styles.container}>
             <View style={styles.content}>
                 <View style={styles.header}>
                     <Text style={styles.title}>📄 Receipt Scanner</Text>

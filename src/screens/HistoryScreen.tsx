@@ -22,8 +22,11 @@ interface ReceiptStats {
     averageTotal: number;
 }
 
+import { useAuth } from '@clerk/clerk-expo';
+
 export const HistoryScreen: React.FC = () => {
     const navigation = useNavigation<HistoryScreenNavigationProp>();
+    const { userId } = useAuth();
     const [receipts, setReceipts] = useState<Receipt[]>([]);
     const [stats, setStats] = useState<ReceiptStats | null>(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -31,6 +34,8 @@ export const HistoryScreen: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
 
     const loadData = useCallback(async (showRefresh = false) => {
+        if (!userId) return;
+
         try {
             if (showRefresh) {
                 setIsRefreshing(true);
@@ -44,8 +49,8 @@ export const HistoryScreen: React.FC = () => {
 
             // Load receipts and stats in parallel
             const [receiptsList, receiptStats] = await Promise.all([
-                getAllReceipts(),
-                getReceiptStats(),
+                getAllReceipts(userId),
+                getReceiptStats(userId),
             ]);
 
             setReceipts(receiptsList);
@@ -57,7 +62,7 @@ export const HistoryScreen: React.FC = () => {
             setIsLoading(false);
             setIsRefreshing(false);
         }
-    }, []);
+    }, [userId]);
 
     // Load data when screen comes into focus
     useFocusEffect(

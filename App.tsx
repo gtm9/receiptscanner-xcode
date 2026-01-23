@@ -12,7 +12,14 @@ if (!publishableKey) {
   )
 }
 
+import { useEffect } from 'react';
+import { initializeDatabase } from './src/utils/db';
+
 export default function App() {
+  useEffect(() => {
+    initializeDatabase().catch(console.error);
+  }, []);
+
   return (
     <ClerkProvider tokenCache={tokenCache} publishableKey={publishableKey}>
       <ClerkLoaded>
