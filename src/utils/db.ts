@@ -3,25 +3,36 @@
  * 
  * Provides functions to interact with the Neon database for storing
  * and retrieving receipt data.
+ * 
+ * Includes MOCK MODE for local testing to save compute credits.
  */
 
 import { neon } from '@neondatabase/serverless';
 import { DATABASE_URL } from '../config/database';
 import { Receipt, ReceiptItem, ParsedReceipt } from '../types';
 
-// Create Neon SQL client
-const sql = neon(DATABASE_URL);
+// Check for Mock Mode
+const USE_MOCK_DB = process.env.EXPO_PUBLIC_USE_MOCK_DB === 'true';
+
+// Create Neon SQL client (only if not mocking, or lazy load)
+const sql = USE_MOCK_DB ? null : neon(DATABASE_URL);
+
+// --- MOCK STORE (In-Memory for Session) ---
+let mockReceipts: Receipt[] = [];
+let mockIdCounter = 1;
 
 /**
  * Initialize the database schema
- * Creates tables if they don't exist
- */
-/**
- * Initialize the database schema
- * Creates tables if they don't exist
  */
 export async function initializeDatabase(): Promise<void> {
+    if (USE_MOCK_DB) {
+        console.log('[MOCK DB] Database initialized (InMemory)');
+        return;
+    }
+
     try {
+        if (!sql) throw new Error("SQL client not initialized");
+
         // 1. Create receipts table
         await sql`
       CREATE TABLE IF NOT EXISTS receipts (
@@ -50,7 +61,6 @@ export async function initializeDatabase(): Promise<void> {
     `;
 
         // 3. Run Migrations (for existing tables)
-        // Ensure user_id and json_data exist before indexing
         try {
             await sql`ALTER TABLE receipts ADD COLUMN IF NOT EXISTS user_id TEXT`;
             await sql`ALTER TABLE receipts ADD COLUMN IF NOT EXISTS json_data JSONB`;
@@ -82,27 +92,46 @@ export async function initializeDatabase(): Promise<void> {
 }
 
 /**
- * Save a receipt and its items to the database
- * @param receipt - The parsed receipt data
- * @param userId - The Clerk User ID
- * @returns The saved receipt with its ID
+ * Save a receipt and its items
  */
 export async function saveReceipt(receipt: ParsedReceipt, userId: string): Promise<Receipt> {
+    if (USE_MOCK_DB) {
+        console.log('[MOCK DB] Saving receipt for user:', userId);
+        const newId = mockIdCounter++;
+        const savedReceipt: Receipt = {
+            id: newId,
+            date: receipt.date || new Date().toISOString().split('T')[0],
+            storeName: receipt.storeName || "Unknown Store",
+            subtotal: receipt.subtotal,
+            tax: receipt.tax,
+            total: receipt.total,
+            rawText: receipt.rawText,
+            items: receipt.items.map((item, idx) => ({
+                id: idx + 1,
+                receiptId: newId,
+                name: item.name,
+                price: item.price,
+                quantity: item.quantity || 1
+            }))
+        };
+        mockReceipts.unshift(savedReceipt); // Add to top
+        return savedReceipt;
+    }
+
     try {
+        if (!sql) throw new Error("SQL client not initialized");
+
         // Construct standard Core fields
         const storeName = receipt.storeName || null;
         const total = receipt.total || null;
-        const scanDate = receipt.date || null; // Will fallback to DB default if null
+        const scanDate = receipt.date || null;
 
         // Prepare Metadata Bag
-        const metadata = {
-            // Add any extra fields here in the future
-        };
+        const metadata = {};
 
-        // Construct the full JSON object to store
-        // Core + Metadata + Raw
+        // Construct the full JSON object
         const jsonData = {
-            ...receipt, // Includes items, rawText, etc.
+            ...receipt,
             metadata,
         };
 
@@ -133,7 +162,7 @@ export async function saveReceipt(receipt: ParsedReceipt, userId: string): Promi
 
         const receiptId = insertedReceipt.id;
 
-        // Insert items if present (for relational queries)
+        // Insert items
         if (receipt.items && receipt.items.length > 0) {
             for (const item of receipt.items) {
                 await sql`
@@ -161,12 +190,17 @@ export async function saveReceipt(receipt: ParsedReceipt, userId: string): Promi
 }
 
 /**
- * Get all receipts for a specific user (without items for list view)
- * @param userId - The Clerk User ID
- * @returns Array of receipts ordered by date descending
+ * Get all receipts for a user
  */
 export async function getAllReceipts(userId: string): Promise<Receipt[]> {
+    if (USE_MOCK_DB) {
+        console.log('[MOCK DB] Getting receipts for user:', userId);
+        return [...mockReceipts];
+    }
+
     try {
+        if (!sql) throw new Error("SQL client not initialized");
+
         const receipts = await sql`
       SELECT id, scan_date, store_name, subtotal, tax, total
       FROM receipts
@@ -189,13 +223,18 @@ export async function getAllReceipts(userId: string): Promise<Receipt[]> {
 }
 
 /**
- * Get a single receipt with all its items
- * @param receiptId - The receipt ID
- * @param userId - The Clerk User ID (for security verification)
- * @returns The receipt with items, or null if not found/unauthorized
+ * Get a single receipt
  */
 export async function getReceiptById(receiptId: number, userId: string): Promise<Receipt | null> {
+    if (USE_MOCK_DB) {
+        console.log('[MOCK DB] Getting receipt:', receiptId);
+        const found = mockReceipts.find(r => r.id === receiptId);
+        return found || null;
+    }
+
     try {
+        if (!sql) throw new Error("SQL client not initialized");
+
         // Get the receipt
         const [receipt] = await sql`
       SELECT id, scan_date, store_name, subtotal, tax, total, raw_text
@@ -238,14 +277,18 @@ export async function getReceiptById(receiptId: number, userId: string): Promise
 }
 
 /**
- * Delete a receipt and all its items
- * @param receiptId - The receipt ID to delete
- * @param userId - The Clerk User ID (for security)
+ * Delete a receipt
  */
 export async function deleteReceipt(receiptId: number, userId: string): Promise<void> {
+    if (USE_MOCK_DB) {
+        console.log('[MOCK DB] Deleting receipt:', receiptId);
+        mockReceipts = mockReceipts.filter(r => r.id !== receiptId);
+        return;
+    }
+
     try {
-        // Items will be deleted automatically due to CASCADE
-        // Only delete if it matches the user_id
+        if (!sql) throw new Error("SQL client not initialized");
+
         await sql`
       DELETE FROM receipts
       WHERE id = ${receiptId} AND user_id = ${userId}
@@ -257,16 +300,29 @@ export async function deleteReceipt(receiptId: number, userId: string): Promise<
 }
 
 /**
- * Get receipt statistics for a user
- * @param userId - The Clerk User ID
- * @returns Statistics about stored receipts
+ * Get receipt statistics
  */
 export async function getReceiptStats(userId: string): Promise<{
     totalReceipts: number;
     totalSpent: number;
     averageTotal: number;
 }> {
+    if (USE_MOCK_DB) {
+        console.log('[MOCK DB] Calculating stats');
+        const totalReceipts = mockReceipts.length;
+        const totalSpent = mockReceipts.reduce((sum, r) => sum + (r.total || 0), 0);
+        const averageTotal = totalReceipts > 0 ? totalSpent / totalReceipts : 0;
+
+        return {
+            totalReceipts,
+            totalSpent,
+            averageTotal
+        };
+    }
+
     try {
+        if (!sql) throw new Error("SQL client not initialized");
+
         const [stats] = await sql`
       SELECT 
         COUNT(*) as total_receipts,

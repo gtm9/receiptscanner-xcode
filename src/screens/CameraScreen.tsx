@@ -61,7 +61,7 @@ export const CameraScreen: React.FC = () => {
 
             if (ocrResult && ocrResult.text) {
                 // Parse the receipt
-                const parsedReceipt = parseReceipt(ocrResult.text);
+                const parsedReceipt = await parseReceipt(ocrResult.text);
                 console.log('Parsed Receipt:', parsedReceipt);
 
                 // Check confidence

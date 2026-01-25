@@ -56,7 +56,7 @@ export const HomeScreen: React.FC = () => {
 
                 if (ocrResult && ocrResult.text) {
                     // Parse the receipt
-                    const parsedReceipt = parseReceipt(ocrResult.text);
+                    const parsedReceipt = await parseReceipt(ocrResult.text);
                     console.log('Parsed Receipt:', parsedReceipt);
 
                     Alert.alert(
@@ -215,6 +215,8 @@ export const HomeScreen: React.FC = () => {
                 >
                     <Text style={styles.historyButtonText}>📋 View History</Text>
                 </TouchableOpacity>
+
+
             </View>
 
             <View style={styles.footer}>

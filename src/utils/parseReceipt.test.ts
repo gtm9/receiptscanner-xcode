@@ -35,7 +35,7 @@ describe('Receipt Parsing Logic', () => {
 
         expect(result.storeName).toBe('H-E-B'); // Cleaned name
         expect(result.total).toBe(5.41);
-        expect(result.date).toBe('01/20/2026');
+        expect(result.date).toBe('2026-01-20');
         expect(result.items.length).toBeGreaterThan(0);
         expect(result.confidence).toBeGreaterThan(0.7);
     });
