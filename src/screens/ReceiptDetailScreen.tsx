@@ -13,12 +13,15 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList, Receipt, ReceiptItem } from '../types';
 import { getReceiptById, deleteReceipt } from '../utils/db';
 
+import { useAuth } from '@clerk/clerk-expo';
+
 type ReceiptDetailRouteProp = RouteProp<RootStackParamList, 'ReceiptDetail'>;
 type ReceiptDetailNavigationProp = NativeStackNavigationProp<RootStackParamList, 'ReceiptDetail'>;
 
 export const ReceiptDetailScreen: React.FC = () => {
     const route = useRoute<ReceiptDetailRouteProp>();
     const navigation = useNavigation<ReceiptDetailNavigationProp>();
+    const { userId } = useAuth();
     const { receiptId } = route.params;
 
     const [receipt, setReceipt] = useState<Receipt | null>(null);
@@ -26,14 +29,17 @@ export const ReceiptDetailScreen: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        loadReceipt();
-    }, [receiptId]);
+        if (userId) {
+            loadReceipt();
+        }
+    }, [receiptId, userId]);
 
     const loadReceipt = async () => {
+        if (!userId) return;
         try {
             setIsLoading(true);
             setError(null);
-            const data = await getReceiptById(receiptId);
+            const data = await getReceiptById(receiptId, userId);
             if (data) {
                 setReceipt(data);
             } else {
@@ -57,8 +63,9 @@ export const ReceiptDetailScreen: React.FC = () => {
                     text: 'Delete',
                     style: 'destructive',
                     onPress: async () => {
+                        if (!userId) return;
                         try {
-                            await deleteReceipt(receiptId);
+                            await deleteReceipt(receiptId, userId);
                             navigation.goBack();
                         } catch (err) {
                             console.error('Failed to delete:', err);

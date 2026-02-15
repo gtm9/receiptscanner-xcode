@@ -28,7 +28,7 @@
         <key>CFBundleURLSchemes</key>
         <array>
           <string>receiptscanner</string>
-          <string>com.receiptscanner.app</string>
+          <string>com.gtm9.receiptscanner</string>
         </array>
       </dict>
       <dict>

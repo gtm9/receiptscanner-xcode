@@ -1,49 +1,38 @@
-/**
- * OCR Utility using react-native-text-recognition
- * 
- * Switches to a library that supports static image OCR reliably.
- */
-
-import TextRecognition from 'react-native-text-recognition';
-import { OCRResult, OCRTextBlock } from '../types';
+import { scanImage } from 'receipt-ocr';
+import { OCRResult } from '../types';
 
 /**
- * Perform OCR on an image file
- * @param imagePath - Path to the image file (from camera capture or gallery)
- * @returns OCRResult with extracted text and text blocks
+ * Perform OCR on an image file using Apple Vision (Native Module)
+ * @param imagePath - Path to the image file
+ * @returns OCRResult
  */
 export async function performOCR(imagePath: string): Promise<OCRResult | null> {
     try {
-        console.log('Starting OCR on:', imagePath);
+        console.warn('Starting Apple Vision OCR on:', imagePath);
 
-        // Ensure path is clean for the library if needed, but usually it handles file:// or /path/to/file
-        // React Native Text Recognition typically expects a clean path or file:// uri.
-        // Let's pass it directly first.
+        // Call the local native module
+        const result = await scanImage(imagePath);
 
-        const result = await TextRecognition.recognize(imagePath);
-
-        if (!result || result.length === 0) {
-            console.log('No text recognized');
+        if (!result || !result.text) {
+            console.log('No text recognized (Apple Vision)');
             return null;
         }
 
-        console.log('OCR success, lines found:', result.length);
+        console.log('Apple Vision Success, text length:', result.text.length);
 
-        // Convert string array to our OCRResult format
-        const blocks: OCRTextBlock[] = result.map((line) => ({
-            text: line,
-            // Bounding box and confidence are not available in the basic return of this library
-            // but that's okay as they are optional in our types.
-        }));
-
-        const ocrResult: OCRResult = {
-            text: result.join('\n'),
-            blocks: blocks,
+        return {
+            text: result.text,
+            blocks: result.blocks.map((block: any) => ({
+                text: block.text,
+                frame: block.bounding, // Pass through bounding box if available
+                confidence: block.confidence
+            })),
         };
 
-        return ocrResult;
     } catch (error) {
-        console.error('OCR Error:', error);
+        console.error('Apple Vision OCR Error:', error);
         return null;
     }
 }
+
+

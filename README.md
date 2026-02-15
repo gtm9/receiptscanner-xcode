@@ -1,95 +1,92 @@
-# ReceiptScanner
+# Receipt Scanner
 
-An iOS receipt scanning app built with Expo + React Native that uses **Apple's native Vision framework** for on-device OCR text recognition.
+An iOS receipt scanning app built with Expo + React Native that uses **Apple's native Vision framework** for on-device OCR text recognition and **OpenRouter** for intelligent parsing.
 
-## Why Apple Vision Framework?
+## 🚀 features
 
-1. **🔒 Privacy**: All text recognition happens on-device. No data is sent to the cloud.
-2. **⚡ Performance**: Optimized for Apple Silicon, offering superior speed.
-3. **🎯 Accuracy**: State-of-the-art OCR for English text, especially effective for receipts.
-4. **📱 Native Integration**: Leverages iOS capabilities directly via `react-native-vision-camera`.
+- **On-Device OCR**: Uses Apple's Vision Framework for fast, private text recognition.
+- **AI Parsing**: Intelligent receipt parsing using OpenRouter (LLM).
+- **Authentication**: User management via Clerk.
+- **Data Persistence**: Local storage with SQLite (or optional Cloud DB).
 
-## Tech Stack
+## 🛠️ Prerequisites
 
-- **Expo SDK 54** with Development Build
-- **React Native 0.81**
-- **TypeScript**
-- **react-native-vision-camera** (v4.6+) with frame processors
-- **React Navigation** (v7) for routing
-- **react-native-sqlite-storage** for local persistence
+- **Node.js** (v18+)
+- **Xcode** (v15+)
+- **CocoaPods**
+- **iOS Device** or **Simulator**
 
-## Project Structure
+## 🏁 Getting Started
 
+1.  **Clone the repository**
+    ```bash
+    git clone <repository-url>
+    cd ReceiptScanner
+    ```
+
+2.  **Install dependencies**
+    ```bash
+    npm install
+    ```
+
+3.  **Environment Setup**
+    Create a `.env` file in the root directory by copying the example:
+    ```bash
+    cp .env.example .env
+    ```
+    Then, fill in your keys in `.env`:
+    - `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY`: Your Clerk Publishable Key.
+    - `EXPO_PUBLIC_OPENROUTER_API_KEY`: Your OpenRouter API Key.
+    - `EXPO_PUBLIC_USE_MOCK_DB`: Set to `true` for dev/testing, `false` for production DB.
+
+4.  **Install iOS Pods**
+    ```bash
+    npx expo prebuild --platform ios
+    cd ios && pod install && cd ..
+    ```
+
+## 📱 Running the App
+
+### Development (Simulator)
+To run the app on the iOS Simulator:
+```bash
+npx expo run:ios
 ```
-ReceiptScanner/
-├── src/
-│   ├── screens/          # Screen components
-│   │   └── HomeScreen.tsx
-│   ├── components/       # Reusable UI components
-│   ├── navigation/       # Navigation configuration
-│   │   └── AppNavigator.tsx
-│   ├── utils/            # Utilities (OCR, parsing, DB)
-│   └── types/            # TypeScript type definitions
-│       └── index.ts
-├── App.tsx               # Main entry point
-├── app.json              # Expo configuration
-├── babel.config.js       # Babel config with worklets plugin
-└── package.json
+
+### Development (Physical Device)
+To run on a physical iPhone:
+1.  Connect your iPhone via USB.
+2.  Open `ios/ReceiptScanner.xcworkspace` in Xcode.
+3.  Select your **Development Team** in `Signing & Capabilities`.
+4.  Run:
+    ```bash
+    npx expo run:ios --device
+    ```
+
+## 🏗️ Building for Production
+
+To build a production IPA for TestFlight or the App Store:
+
+1.  **Install EAS CLI**
+    ```bash
+    npm install -g eas-cli
+    ```
+
+2.  **Configure Build**
+    Ensure `eas.json` is configured (default is usually sufficient for standard builds).
+
+3.  **Build**
+    ```bash
+    eas build --platform ios
+    ```
+
+## 🧪 Testing
+
+Run the test suite (if available):
+```bash
+npm test
 ```
 
-## Setup Instructions
-
-### Prerequisites
-
-- Node.js 18+
-- Xcode 15+ (for iOS development)
-- CocoaPods
-- An iOS device or Simulator
-
-### Installation
-
-1. **Install dependencies:**
-   ```bash
-   cd ReceiptScanner
-   npm install
-   ```
-
-2. **Generate native iOS project (prebuild):**
-   ```bash
-   npx expo prebuild --platform ios
-   ```
-
-3. **Install CocoaPods:**
-   ```bash
-   cd ios && pod install && cd ..
-   ```
-
-4. **Run on iOS:**
-   ```bash
-   npm run ios
-   ```
-   
-   Or directly:
-   ```bash
-   npx expo run:ios
-   ```
-
-## ⚠️ Important Notes
-
-- **This app requires a Development Build** — it will NOT work in Expo Go.
-- The `react-native-vision-camera` library needs native code that isn't in the Expo Go client.
-- Run with `npx expo run:ios` which builds a custom development client on your device/simulator.
-
-## Features (MVP)
-
-- [x] Home screen with "Scan Receipt" button
-- [ ] Camera screen with full-screen preview
-- [ ] Real-time OCR using Apple Vision framework
-- [ ] Parse extracted text into structured data (items, prices, totals)
-- [ ] Store receipts in local SQLite database
-- [ ] History screen to view past receipts
-
-## License
+## 📄 License
 
 MIT
-# receiptscanner-xcode

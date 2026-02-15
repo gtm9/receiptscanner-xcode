@@ -4,13 +4,14 @@ import {
     Text,
     StyleSheet,
     TouchableOpacity,
-    SafeAreaView,
     Alert,
     ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
+import * as Clipboard from 'expo-clipboard';
 import { RootStackParamList } from '../types';
 import { performOCR } from '../utils/ocr';
 import { parseReceipt } from '../utils/parseReceipt';
@@ -18,8 +19,11 @@ import { saveReceipt } from '../utils/db';
 
 type HomeScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Home'>;
 
+import { useAuth } from '@clerk/clerk-expo';
+
 export const HomeScreen: React.FC = () => {
     const navigation = useNavigation<HomeScreenNavigationProp>();
+    const { userId } = useAuth();
     const [isProcessing, setIsProcessing] = useState(false);
 
     const handleScanReceipt = () => {
@@ -51,9 +55,28 @@ export const HomeScreen: React.FC = () => {
                 const ocrResult = await performOCR(imageUri);
                 console.log('OCR Result:', ocrResult);
 
+                // DEBUG: Show Alert with OCR text to verify it's working
+                if (ocrResult && ocrResult.text) {
+                    Alert.alert(
+                        'Debug: OCR Output',
+                        ocrResult.text.substring(0, 500) + '...',
+                        [
+                            { text: 'Cancel', style: 'cancel' },
+                            {
+                                text: 'Copy Full Text',
+                                onPress: async () => {
+                                    await Clipboard.setStringAsync(ocrResult.text);
+                                    Alert.alert('Copied!', 'Full OCR text copied to clipboard.');
+                                }
+                            },
+                            { text: 'OK' }
+                        ]
+                    );
+                }
+
                 if (ocrResult && ocrResult.text) {
                     // Parse the receipt
-                    const parsedReceipt = parseReceipt(ocrResult.text);
+                    const parsedReceipt = await parseReceipt(ocrResult.text);
                     console.log('Parsed Receipt:', parsedReceipt);
 
                     Alert.alert(
@@ -88,6 +111,10 @@ export const HomeScreen: React.FC = () => {
                                         {
                                             text: 'Save Anyway',
                                             onPress: async () => {
+                                                if (!userId) {
+                                                    Alert.alert('Error', 'You must be logged in to save receipts.');
+                                                    return;
+                                                }
                                                 // Duplicate save logic here
                                                 try {
                                                     const savedReceipt = await saveReceipt({
@@ -97,7 +124,8 @@ export const HomeScreen: React.FC = () => {
                                                         total: parsedReceipt.total,
                                                         rawText: parsedReceipt.rawText,
                                                         items: parsedReceipt.items,
-                                                    });
+                                                        confidence: parsedReceipt.confidence,
+                                                    }, userId);
 
                                                     Alert.alert(
                                                         'Saved!',
@@ -116,6 +144,10 @@ export const HomeScreen: React.FC = () => {
                             {
                                 text: 'Save Receipt',
                                 onPress: async () => {
+                                    if (!userId) {
+                                        Alert.alert('Error', 'You must be logged in to save receipts.');
+                                        return;
+                                    }
                                     try {
                                         const savedReceipt = await saveReceipt({
                                             storeName: parsedReceipt.storeName,
@@ -124,7 +156,8 @@ export const HomeScreen: React.FC = () => {
                                             total: parsedReceipt.total,
                                             rawText: parsedReceipt.rawText,
                                             items: parsedReceipt.items,
-                                        });
+                                            confidence: parsedReceipt.confidence,
+                                        }, userId);
 
                                         Alert.alert(
                                             'Saved!',
@@ -159,7 +192,7 @@ export const HomeScreen: React.FC = () => {
     };
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView edges={['bottom', 'left', 'right']} style={styles.container}>
             <View style={styles.content}>
                 <View style={styles.header}>
                     <Text style={styles.title}>📄 Receipt Scanner</Text>
@@ -202,6 +235,17 @@ export const HomeScreen: React.FC = () => {
                 >
                     <Text style={styles.historyButtonText}>📋 View History</Text>
                 </TouchableOpacity>
+
+                <TouchableOpacity
+                    style={[styles.historyButton, { marginTop: 12, backgroundColor: '#333' }]}
+                    onPress={() => navigation.navigate('AccuracyTest')}
+                    activeOpacity={0.7}
+                    disabled={isProcessing}
+                >
+                    <Text style={[styles.historyButtonText, { color: '#4CAF50' }]}>🧪 Accuracy Test</Text>
+                </TouchableOpacity>
+
+
             </View>
 
             <View style={styles.footer}>

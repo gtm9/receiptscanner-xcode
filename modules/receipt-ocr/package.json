@@ -1,0 +1,12 @@
+{
+    "name": "receipt-ocr",
+    "version": "1.0.0",
+    "main": "index.ts",
+    "description": "Local Apple Vision OCR module",
+    "license": "MIT",
+    "author": "Goutam",
+    "homepage": "https://example.com",
+    "dependencies": {
+        "expo-modules-core": "*"
+    }
+}
