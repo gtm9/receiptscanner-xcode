@@ -11,6 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
+import * as Clipboard from 'expo-clipboard';
 import { RootStackParamList } from '../types';
 import { performOCR } from '../utils/ocr';
 import { parseReceipt } from '../utils/parseReceipt';
@@ -53,6 +54,25 @@ export const HomeScreen: React.FC = () => {
                 // Perform OCR on the selected image
                 const ocrResult = await performOCR(imageUri);
                 console.log('OCR Result:', ocrResult);
+
+                // DEBUG: Show Alert with OCR text to verify it's working
+                if (ocrResult && ocrResult.text) {
+                    Alert.alert(
+                        'Debug: OCR Output',
+                        ocrResult.text.substring(0, 500) + '...',
+                        [
+                            { text: 'Cancel', style: 'cancel' },
+                            {
+                                text: 'Copy Full Text',
+                                onPress: async () => {
+                                    await Clipboard.setStringAsync(ocrResult.text);
+                                    Alert.alert('Copied!', 'Full OCR text copied to clipboard.');
+                                }
+                            },
+                            { text: 'OK' }
+                        ]
+                    );
+                }
 
                 if (ocrResult && ocrResult.text) {
                     // Parse the receipt
@@ -214,6 +234,15 @@ export const HomeScreen: React.FC = () => {
                     disabled={isProcessing}
                 >
                     <Text style={styles.historyButtonText}>📋 View History</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                    style={[styles.historyButton, { marginTop: 12, backgroundColor: '#333' }]}
+                    onPress={() => navigation.navigate('AccuracyTest')}
+                    activeOpacity={0.7}
+                    disabled={isProcessing}
+                >
+                    <Text style={[styles.historyButtonText, { color: '#4CAF50' }]}>🧪 Accuracy Test</Text>
                 </TouchableOpacity>
 
 

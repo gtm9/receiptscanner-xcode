@@ -11,6 +11,7 @@ import { ReceiptDetailScreen } from '../screens/ReceiptDetailScreen';
 import { LoginScreen } from '../screens/LoginScreen';
 import { AccountScreen } from '../screens/AccountScreen';
 import { StatsScreen } from '../screens/StatsScreen';
+import { AccuracyTestScreen } from '../screens/AccuracyTestScreen';
 import { RootStackParamList } from '../types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -95,6 +96,11 @@ export const AppNavigator: React.FC = () => {
                             name="Stats"
                             component={StatsScreen}
                             options={{ title: 'Spending Analytics' }}
+                        />
+                        <Stack.Screen
+                            name="AccuracyTest"
+                            component={AccuracyTestScreen}
+                            options={{ title: '🧪 Accuracy Test' }}
                         />
                     </>
                 ) : (

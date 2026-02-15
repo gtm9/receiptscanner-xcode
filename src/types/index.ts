@@ -7,6 +7,7 @@ export type RootStackParamList = {
     ReceiptDetail: { receiptId: number };
     Account: undefined;
     Stats: undefined;
+    AccuracyTest: undefined;
 };
 
 // Receipt data types
